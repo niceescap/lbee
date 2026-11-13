@@ -1,0 +1,15 @@
+# Secrets
+.env
+*.key
+*.pem
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# État runtime (mémoire persistante)
+kb/sessions/
+kb/shared_memory.json
+kb/*.tmp

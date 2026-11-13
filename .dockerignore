@@ -1,0 +1,17 @@
+.git
+.gitignore
+.env
+**/__pycache__
+**/*.pyc
+**/*.pyo
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.venv
+venv
+README.md
+docker-compose.yml
+Dockerfile
+.dockerignore
+kb/sessions
+kb/shared_memory.json

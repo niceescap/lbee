@@ -1,0 +1,84 @@
+# ─────────────────────────────────────────────────────────────────────────────
+#  lbee — configuration principale
+#
+#  Ce fichier est monté en lecture seule dans le conteneur :
+#      ./config.yml:/app/config.yml:ro
+#
+#  ⚠️  Ne JAMAIS mettre de clé API ici. La clé est lue exclusivement depuis
+#      la variable d'environnement API_KEY (voir .env / .env.example).
+# ─────────────────────────────────────────────────────────────────────────────
+
+llm:
+  # URL de base compatible OpenAI (sans le /chat/completions final).
+  # Exemples : https://api.openai.com/v1, http://ollama:11434/v1,
+  #            https://api.groq.com/openai/v1, https://openrouter.ai/api/v1
+  base_url: "https://api.openai.com/v1"
+
+  # Nom du modèle (tel qu'attendu par le endpoint /v1/chat/completions).
+  model: "gpt-4o-mini"
+
+  # Timeout HTTP global en secondes (connexion + lecture).
+  timeout: 60
+
+  # Nombre de tentatives en cas d'erreur transitoire (429 / 5xx / réseau).
+  max_retries: 2
+
+generation:
+  # Paramètres de génération STRICTLY supportés par l'API OpenAI :
+  temperature: 0.7
+  top_p: 1.0
+  max_tokens: 1024
+
+  # Rien n'est envoyé par défaut.
+  # Les paramètres non standards (top_k, repetition_penalty, min_p, typical_p,
+  # seed locaux, etc.) DOIVENT passer par extra_body pour éviter les erreurs
+  # HTTP 400 « Unrecognized request argument supplied: top_k ».
+  extra_body: {}
+  # Exemple (vLLM / llama.cpp / Ollama) :
+  # extra_body:
+  #   top_k: 40
+  #   repeat_penalty: 1.1
+
+  # Corps JSON ajouté tel quel à la requête d'outillage (rarement nécessaire).
+  # extra_body_tools: {}
+
+memory:
+  # Un des trois modes :
+  #   one-shot         → aucune mémoire entre les appels
+  #   personal         → historique persisté par session_id
+  #   shared-compressed→ historique global partagé + résumé automatique
+  mode: one-shot
+
+  # Nombre maximum de messages d'historique renvoyés au modèle (fenêtre glissante).
+  max_history_messages: 20
+
+  # Seuil de compression pour le mode shared-compressed :
+  # la mémoire partagée est résumée par le LLM dès que
+  # len(messages) + len(summary) dépasse cette valeur.
+  compression_threshold: 6000
+
+  # Nombre de messages conservés bruts après une compression (le reste part
+  # dans le résumé). Mettre 0 pour tout résumer.
+  keep_last_messages_after_compression: 6
+
+features:
+  # Active le chargement et l'exposition des outils de ./class-tools.
+  enable_tools: true
+
+  # Nombre maximum d'allers-retours modèle → outil → modèle (garde-fou
+  # anti-boucle infinie).
+  max_tool_iterations: 5
+
+  # Streaming SSE de la réponse finale (token par token).
+  # Les éventuels appels d'outils sont exécutés AVANT le flux final.
+  enable_streaming: false
+
+paths:
+  # Prompt système (monté en lecture seule).
+  system_prompt: "/app/system_prompt.md"
+
+  # Répertoire des outils Python dynamiques.
+  tools_dir: "/app/class-tools"
+
+  # Répertoire de persistance (sessions, mémoire partagée).
+  kb_dir: "/app/kb"
