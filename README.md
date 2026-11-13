@@ -212,6 +212,15 @@ data: {"event": "done", "data": "[DONE]"}
 Les appels d'outils sont **exécutés avant** l'ouverture du flux : les fragments
 `tool_calls` ne sont jamais diffusés, le client ne reçoit que du texte.
 
+Deux cas de figure :
+
+- **sans outil** (ou `enable_tools: false`) : la requête part en `stream: true`,
+  les tokens arrivent au fil de l'eau ;
+- **avec outils** : la boucle de décision tourne en non-streaming (aucun
+  `tool_calls` diffusé), puis la réponse finale est streamée. Si la boucle se
+  termine dès la première réponse du modèle, le texte est émis en un seul
+  événement `delta` — c'est normal, il n'y a rien de plus à streamer.
+
 ---
 
 ## 7. Volumes et sécurité

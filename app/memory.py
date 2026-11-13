@@ -174,8 +174,9 @@ class MemoryStore:
             self._personal[session_id] = state
             self._write(self._session_file(session_id), state)
             return
+        # La compression est declenchee par le harnais (elle necessite un
+        # appel LLM) via needs_compression() / set_summary().
         self._shared.messages.append(message)
-        self._maybe_compress()
         self._write(self.shared_path, self._shared)
 
     def record_turn(self, session_id: str, user_message: str, assistant_message: str) -> None:

@@ -83,7 +83,7 @@ class MemoryConfig(StrictModel):
 
     mode: Literal["one-shot", "personal", "shared-compressed"] = "one-shot"
     max_history_messages: int = Field(default=20, ge=0, le=2000)
-    compression_threshold: int = Field(default=6000, ge=500, le=400_000)
+    compression_threshold: int = Field(default=6000, ge=100, le=400_000)
     keep_last_messages_after_compression: int = Field(default=6, ge=0, le=200)
 
     # Renseigné au démarrage depuis paths.kb_dir.

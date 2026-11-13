@@ -253,7 +253,7 @@ class Harness:
                 await self._compress_if_needed()
                 return answer
 
-            answer = await self._agentic_loop(clean_id, messages)
+            answer, messages = await self._agentic_loop(clean_id, messages)
             self.memory.record_turn(clean_id, message, answer)
             await self._compress_if_needed()
             return answer
@@ -268,7 +268,8 @@ class Harness:
 
             calls = msg.tool_calls or []
             if not calls:
-                return (msg.content or "").strip()
+                # Aucun outil : la reponse finale est deja dans msg.
+                return (msg.content or "").strip(), messages
 
             messages.append(
                 {
@@ -319,10 +320,11 @@ class Harness:
                     log.exception("outil %s en échec", name)
                     messages.append(tool_error(name, f"{type(exc).__name__}: {exc}"))
 
-        # Nombre maximal d'allers-retours atteint : on termine proprement.
+        # Nombre maximal d'allers-retours atteint : on demande une reponse
+        # finale SANS outils pour eviter une boucle infinie.
         try:
             response = await self._complete(messages, tools=False)
-            return (response.choices[0].message.content or "").strip()
+            return (response.choices[0].message.content or "").strip(), messages
         except (APIError, RateLimitError, APIConnectionError, APITimeoutError) as exc:
             raise RuntimeError(f"limite d'itérations d'outils atteinte ({max_iterations}): {exc}") from exc
 
@@ -338,17 +340,20 @@ class Harness:
 
         async with self.memory.transaction():
             messages = self.build_messages(clean_id, message)
-            answer: Optional[str] = None
+            final = ""
+            tools_used = self.config.features.enable_tools and bool(self.tools)
 
-            if self.config.features.enable_tools and self.tools:
+            if tools_used:
+                # Phase de decision : non-streaming, aucun chunk tool_calls
+                # n'est diffuse. On recupere les messages prets a streamer.
                 try:
-                    answer = await self._agentic_loop(clean_id, messages)
+                    final, messages = await self._agentic_loop(clean_id, messages)
                 except (APIError, RateLimitError, APIConnectionError, APITimeoutError) as exc:
                     raise RuntimeError(f"erreur LLM: {exc}") from exc
 
-            if answer is not None:
-                # Réponse déjà connue : émise en un seul événement.
-                yield sse_event("delta", answer)
+            if final:
+                # Le tour s'est termine sans dernier appel a streamer.
+                yield sse_event("delta", final)
             else:
                 try:
                     stream = await self._complete(messages, tools=False, stream=True)
@@ -358,12 +363,13 @@ class Harness:
                         delta = chunk.choices[0].delta
                         piece = getattr(delta, "content", None)
                         if piece:
+                            final += piece
                             yield sse_event("delta", piece)
                 except (APIError, RateLimitError, APIConnectionError, APITimeoutError) as exc:
                     yield sse_event("error", str(exc))
                     return
 
-            self.memory.record_turn(clean_id, message, answer or "")
+            self.memory.record_turn(clean_id, message, final)
             try:
                 await self._compress_if_needed()
             except (APIError, RateLimitError, APIConnectionError, APITimeoutError) as exc:
