@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, ClassVar, Dict, List, Literal, Optional
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -110,33 +110,28 @@ class FeaturesConfig(StrictModel):
     enable_streaming: bool = False
 
 
-class Paths:
+class Paths(BaseModel):
     """Résolution des chemins (absolus ou relatifs à /app)."""
 
-    APP_ROOT = Path(os.environ.get("LBE_ROOT", "/app"))
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
-    def __init__(
-        self,
-        system_prompt: str = "system_prompt.md",
-        tools_dir: str = "class-tools",
-        kb_dir: str = "kb",
-    ) -> None:
-        self.system_prompt = system_prompt
-        self.tools_dir = tools_dir
-        self.kb_dir = kb_dir
-        self.system_prompt_path: Path = Path(system_prompt)
-        self.tools_dir_path: Path = Path(tools_dir)
-        self.kb_dir_path: Path = Path(kb_dir)
+    APP_ROOT: ClassVar[Path] = Path(os.environ.get("LBE_ROOT", "/app"))
+
+    system_prompt: str = "system_prompt.md"
+    tools_dir: str = "class-tools"
+    kb_dir: str = "kb"
+
+    system_prompt_path: Path = Field(default=Path("system_prompt.md"), exclude=True)
+    tools_dir_path: Path = Field(default=Path("class-tools"), exclude=True)
+    kb_dir_path: Path = Field(default=Path("kb"), exclude=True)
 
     def resolve(self) -> None:
         self.system_prompt_path = self._absolutize(self.system_prompt)
         self.tools_dir_path = self._absolutize(self.tools_dir)
         self.kb_dir_path = self._absolutize(self.kb_dir)
 
-        if not self.system_prompt_path.is_file():
-            raise ConfigError(f"prompt système introuvable: {self.system_prompt_path}")
-
     def _absolutize(self, value: str) -> Path:
+        """Résout un chemin : absolu tel quel, sinon relatif à LBE_ROOT."""
         path = Path(value).expanduser()
         if path.is_absolute():
             return path
@@ -152,13 +147,21 @@ class LbeeConfig(StrictModel):
     features: FeaturesConfig = Field(default_factory=FeaturesConfig)
     paths: Paths = Field(default_factory=Paths)
 
-    model_config = ConfigDict(arbitrary_types_allowed=True)
-
     @model_validator(mode="after")
     def _link_memory_paths(self) -> "LbeeConfig":
-        self.paths.resolve()
         self.memory.kb_dir = self.paths.kb_dir_path
         return self
+
+    @classmethod
+    def from_dict(cls, raw: Dict[str, Any]) -> "LbeeConfig":
+        if not isinstance(raw, dict):
+            raise ConfigError("config.yml doit être un mapping à la racine")
+        try:
+            return cls(**raw)
+        except ConfigError:
+            raise
+        except Exception as exc:  # pydantic.ValidationError et dérivés
+            raise ConfigError(f"configuration invalide: {exc}") from exc
 
     @classmethod
     def from_file(cls, path: Path) -> "LbeeConfig":
@@ -169,13 +172,15 @@ class LbeeConfig(StrictModel):
         except yaml.YAMLError as exc:
             raise ConfigError(f"config.yml invalide: {exc}") from exc
 
-        if not isinstance(raw, dict):
-            raise ConfigError("config.yml doit être un mapping à la racine")
+        config = cls.from_dict(raw)
+        config.validate_paths()
+        return config
 
-        try:
-            return cls(**raw)
-        except Exception as exc:  # pydantic.ValidationError et dérivés
-            raise ConfigError(f"configuration invalide: {exc}") from exc
+    def validate_paths(self) -> None:
+        """Vérifie que le prompt système est bien monté."""
+        self.paths.resolve()
+        if not self.paths.system_prompt_path.is_file():
+            raise ConfigError(f"prompt système introuvable: {self.paths.system_prompt_path}")
 
 
 def api_key() -> str:

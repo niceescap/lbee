@@ -13,3 +13,5 @@ venv/
 kb/sessions/
 kb/shared_memory.json
 kb/*.tmp
+# Tests locaux
+/tmp/
